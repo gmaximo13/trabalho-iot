@@ -1,0 +1,252 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Dashboard - Estacionamento Inteligente</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        body { font-family: 'Inter', sans-serif; }
+        .vaga, #btn-controle, #btn-toggle-historico, .filtro-btn { transition: all 0.3s ease-in-out; }
+        .filtro-btn-active {
+            background-color: #2563eb;
+            color: white;
+        }
+    </style>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;700&display=swap" rel="stylesheet">
+</head>
+<body class="bg-gray-100 text-gray-800">
+
+<div class="container mx-auto p-4 md:p-8">
+    <header class="text-center mb-8">
+        <h1 class="text-4xl font-bold text-gray-900">Estacionamento Inteligente</h1>
+        <p class="text-lg text-gray-600 mt-2">Status das Vagas e Controle de Acesso</p>
+    </header>
+
+    <!-- Seção de Controle -->
+    <section class="mb-10 text-center">
+        <button id="btn-controle" class="bg-gray-500 text-white font-bold py-3 px-6 rounded-lg shadow-lg hover:bg-gray-600 focus:outline-none focus:ring-2 focus:ring-gray-400">
+            Carregando Controle...
+        </button>
+    </section>
+
+    <!-- Seção de Status das Vagas -->
+    <section class="mb-10">
+        <h2 class="text-2xl font-semibold mb-4 border-b pb-2">Status Atual</h2>
+        <div id="status-vagas" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
+            <div id="vaga1" class="vaga bg-gray-300 rounded-lg shadow-md p-6 flex flex-col items-center justify-center animate-pulse"><span class="text-gray-500">Vaga 1</span></div>
+            <div id="vaga2" class="vaga bg-gray-300 rounded-lg shadow-md p-6 flex flex-col items-center justify-center animate-pulse"><span class="text-gray-500">Vaga 2</span></div>
+            <div id="vaga3" class="vaga bg-gray-300 rounded-lg shadow-md p-6 flex flex-col items-center justify-center animate-pulse"><span class="text-gray-500">Vaga 3</span></div>
+        </div>
+    </section>
+
+    <!-- Botão para mostrar/ocultar histórico -->
+    <section class="mb-4 text-center">
+        <button id="btn-toggle-historico" class="bg-blue-500 text-white font-bold py-2 px-5 rounded-lg shadow-md hover:bg-blue-600">
+            Mostrar Histórico
+        </button>
+    </section>
+
+    <!-- Seção de Histórico -->
+    <section id="historico-container" class="hidden">
+        <h2 class="text-2xl font-semibold mb-4 border-b pb-2">Histórico de Utilização</h2>
+
+        <!-- NOVO: Filtros de Histórico -->
+        <div id="historico-filtros" class="mb-4 flex flex-wrap justify-center gap-2">
+            <button data-filtro="geral" class="filtro-btn filtro-btn-active bg-gray-200 py-2 px-4 rounded-md font-semibold hover:bg-gray-300">Geral</button>
+            <button data-filtro="vaga1" class="filtro-btn bg-gray-200 py-2 px-4 rounded-md font-semibold hover:bg-gray-300">Vaga 1</button>
+            <button data-filtro="vaga2" class="filtro-btn bg-gray-200 py-2 px-4 rounded-md font-semibold hover:bg-gray-300">Vaga 2</button>
+            <button data-filtro="vaga3" class="filtro-btn bg-gray-200 py-2 px-4 rounded-md font-semibold hover:bg-gray-300">Vaga 3</button>
+        </div>
+
+        <div class="bg-white rounded-lg shadow-md overflow-hidden">
+            <table class="min-w-full">
+                <thead class="bg-gray-200">
+                <tr>
+                    <th class="py-3 px-4 text-left text-sm font-semibold text-gray-600 uppercase">Vaga</th>
+                    <th class="py-3 px-4 text-left text-sm font-semibold text-gray-600 uppercase">Entrada</th>
+                    <th class="py-3 px-4 text-left text-sm font-semibold text-gray-600 uppercase">Saída</th>
+                    <th class="py-3 px-4 text-left text-sm font-semibold text-gray-600 uppercase">Duração</th>
+                </tr>
+                </thead>
+                <tbody id="historico-body" class="divide-y divide-gray-200">
+                <!-- Conteúdo do histórico será renderizado aqui -->
+                </tbody>
+            </table>
+        </div>
+    </section>
+</div>
+
+<!-- Firebase SDKs -->
+<script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-app.js"></script>
+<script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-database.js"></script>
+
+<script>
+    const firebaseConfig = {
+        apiKey: "AIzaSyC6eaGmXcoO4VTwrpqvNZDAjgcesdguzEA",
+        authDomain: "trabalho-final-iot.firebaseapp.com",
+        databaseURL: "https://trabalho-final-iot-default-rtdb.firebaseio.com",
+        projectId: "trabalho-final-iot",
+        storageBucket: "trabalho-final-iot.appspot.com",
+        messagingSenderId: "228189394626",
+        appId: "1:228189394626:web:2d7cf866532a12be718d5b"
+    };
+
+    firebase.initializeApp(firebaseConfig);
+    const database = firebase.database();
+
+    const vagasRef = database.ref('estacionamento/vagas');
+    const historicoRef = database.ref('estacionamento/historico');
+    const configRef = database.ref('estacionamento/config');
+
+    // --- VARIÁVEIS DE ESTADO ---
+    let allHistoryData = [];
+    let currentFilter = 'geral';
+
+    document.addEventListener('DOMContentLoaded', () => {
+        const btnControle = document.getElementById('btn-controle');
+        const btnToggleHistorico = document.getElementById('btn-toggle-historico');
+        const historicoContainer = document.getElementById('historico-container');
+        const filtroBtns = document.querySelectorAll('.filtro-btn');
+
+        let parkingStatus = 'aberto';
+
+        // --- LISTENERS DE CONTROLE ---
+        btnControle.addEventListener('click', () => {
+            const novoStatus = (parkingStatus === 'aberto') ? 'fechado' : 'aberto';
+            configRef.update({ status: novoStatus });
+        });
+
+        btnToggleHistorico.addEventListener('click', () => {
+            historicoContainer.classList.toggle('hidden');
+            btnToggleHistorico.textContent = historicoContainer.classList.contains('hidden') ? 'Mostrar Histórico' : 'Ocultar Histórico';
+        });
+
+        filtroBtns.forEach(btn => {
+            btn.addEventListener('click', () => {
+                currentFilter = btn.dataset.filtro;
+                updateActiveFilterButton();
+                renderHistoryTable();
+            });
+        });
+
+        // --- LISTENERS DO FIREBASE ---
+        configRef.on('value', (snapshot) => {
+            const data = snapshot.val();
+            parkingStatus = data && data.status ? data.status : 'aberto';
+            updateControlButton(parkingStatus);
+        });
+
+        vagasRef.on('value', (snapshot) => {
+            const vagas = snapshot.val();
+            if (vagas) {
+                Object.keys(vagas).forEach(key => {
+                    const vagaElement = document.getElementById(key);
+                    if (vagaElement) updateVagaUI(vagaElement, key, vagas[key]);
+                });
+            }
+        });
+
+        historicoRef.on('child_added', (vagaSnapshot) => {
+            const vagaNome = vagaSnapshot.key;
+            const historicos = vagaSnapshot.val();
+            Object.keys(historicos).forEach(key => {
+                allHistoryData.push({ vaga: vagaNome, ...historicos[key] });
+            });
+            renderHistoryTable();
+        });
+    });
+
+    // --- FUNÇÕES DE ATUALIZAÇÃO DA UI ---
+    function renderHistoryTable() {
+        const historicoBody = document.getElementById('historico-body');
+        historicoBody.innerHTML = ''; // Limpa a tabela
+
+        const filteredData = allHistoryData.filter(item => {
+            if (currentFilter === 'geral') return true;
+            return item.vaga === currentFilter;
+        });
+
+        if (filteredData.length === 0) {
+            historicoBody.innerHTML = `<tr><td colspan="4" class="text-center py-10 text-gray-500">Nenhum registro encontrado para este filtro.</td></tr>`;
+            return;
+        }
+
+        // Ordena para mostrar os mais recentes primeiro
+        filteredData.sort((a, b) => b.saida - a.saida);
+
+        filteredData.forEach(item => addHistoricoRow(item));
+    }
+
+    function addHistoricoRow(item) {
+        const historicoBody = document.getElementById('historico-body');
+        const row = document.createElement('tr');
+        row.classList.add('hover:bg-gray-50');
+        row.innerHTML = `
+            <td class="py-4 px-4 text-sm font-medium">${item.vaga.charAt(0).toUpperCase() + item.vaga.slice(1)}</td>
+            <td class="py-4 px-4 text-sm">${formatarTimestamp(item.entrada)}</td>
+            <td class="py-4 px-4 text-sm">${formatarTimestamp(item.saida)}</td>
+            <td class="py-4 px-4 text-sm">${formatarDuracao(item.duracaoSeg)}</td>
+        `;
+        historicoBody.appendChild(row);
+    }
+
+    function updateActiveFilterButton() {
+        document.querySelectorAll('.filtro-btn').forEach(btn => {
+            btn.classList.remove('filtro-btn-active');
+            if (btn.dataset.filtro === currentFilter) {
+                btn.classList.add('filtro-btn-active');
+            }
+        });
+    }
+
+    function updateControlButton(status) {
+        const btnControle = document.getElementById('btn-controle');
+        btnControle.classList.remove('bg-red-600', 'hover:bg-red-700', 'bg-green-600', 'hover:bg-green-700', 'bg-gray-500');
+        if (status === 'aberto') {
+            btnControle.textContent = 'Fechar Estacionamento';
+            btnControle.classList.add('bg-red-600', 'hover:bg-red-700');
+        } else {
+            btnControle.textContent = 'Abrir Estacionamento';
+            btnControle.classList.add('bg-green-600', 'hover:bg-green-700');
+        }
+    }
+
+    function updateVagaUI(element, nome, data) {
+        element.classList.remove('bg-gray-300', 'animate-pulse', 'bg-green-500', 'bg-red-500');
+        const nomeCapitalizado = nome.charAt(0).toUpperCase() + nome.slice(1,4) + " " + nome.slice(4);
+        let statusText = '';
+        if (data.status === 'ocupada') {
+            element.classList.add('bg-red-500');
+            statusText = `Ocupada desde ${formatarTimestamp(data.entrada)}`;
+        } else {
+            element.classList.add('bg-green-500');
+            statusText = 'Livre';
+        }
+        element.innerHTML = `<span class="text-2xl font-bold text-white">${nomeCapitalizado}</span><span class="text-lg text-white mt-2">${statusText}</span>`;
+    }
+
+    function formatarTimestamp(epoch) {
+        if (!epoch) return 'N/A';
+        return new Date(epoch * 1000).toLocaleString('pt-BR', { timeZone: 'America/Sao_Paulo' });
+    }
+
+    function formatarDuracao(segundos) {
+        if (segundos === undefined || segundos < 0) return 'N/A';
+        if (segundos < 60) return `${segundos} seg`;
+
+        const h = Math.floor(segundos / 3600);
+        const m = Math.floor((segundos % 3600) / 60);
+        const s = segundos % 60;
+
+        let duracaoFormatada = '';
+        if (h > 0) duracaoFormatada += `${h}h `;
+        if (m > 0) duracaoFormatada += `${m}m `;
+        if (s > 0) duracaoFormatada += `${s}s`;
+
+        return duracaoFormatada.trim();
+    }
+</script>
+</body>
+</html>
